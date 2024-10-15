@@ -582,16 +582,3 @@ def classification(image, actual_image):  # object classified based on certain p
     cv2.waitKey(0)
     cv2.destroyWindow("classified")
 
-
-# filename = '/Users/vivekkumarmaheshwari/Downloads/fruit1.bmp'
-# actual_image = cv2.imread(filename, 1)  # actual image without any processing
-# thresholded_image = display_and_return_double_threshold(filename)
-# cleaned_image = clean_image(thresholded_image)
-# connected_components_image = connected_components_using_flood_fill(cleaned_image)  # (output, num_components)
-# connect_image = connected_components_image[0]
-#
-# stem_removed_image = remove_stem(cleaned_image)
-# banana_regions = list(find_banana_intensities(connect_image)[0])
-# centroids = find_banana_intensities(connect_image)[1]
-# image = final_components(connect_image, banana_regions, centroids)  # final components
-# classification(image, actual_image)
