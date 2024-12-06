@@ -1,7 +1,38 @@
 import cv2
-import numpy
 import numpy as np
 import math
+import matplotlib.pyplot as plt
+
+def histogram_equalizer(filename):
+    if type(filename) == str:
+        image = cv2.imread(filename, 0)  # returns numpy array of image
+    else:
+        image = filename  # else image is provided as numpy array
+
+    height, width = image.shape  # gives height and width of image
+    total_pixels = height * width
+    new_image = np.zeros(shape=(height, width), dtype=np.uint8)
+
+    histogram = [0] * 256
+    for i in range(height):
+        for j in range(width):
+            histogram[image[i][j]] += 1
+
+    norm_histogram = [freq / total_pixels for freq in histogram]  # normalized hist divided by total pixels and rounding
+
+    cdf = [0] * 256
+    cdf[0] = norm_histogram[0]
+    for i in range(1, len(norm_histogram)):  # calculating cumulative distribution function
+        cdf[i] = norm_histogram[i] + cdf[i - 1]
+
+    for i in range(height):
+        for j in range(width):
+            new_image[i][j] = int((256 - 1) * cdf[image[i][j]])  # getting new adjusted intensities
+
+    cv2.imshow("histogram_equalizer", new_image)
+    cv2.waitKey(0)
+    cv2.destroyWindow("histogram_equalizer")
+    return new_image
 
 
 def convolve(image, kernel):  # corresponding pixels of image and kernel are multiplied and then added together for every pixel
@@ -100,7 +131,7 @@ def magnitude_direction(image, sigma):  # returns edges magnitude and edges dire
            magnitude[i][j] = np.sqrt((vertical[i][j] ** 2) + (horizontal[i][j] ** 2))
            direction[i][j] = np.arctan2(horizontal[i][j], vertical[i][j])
 
-    cv2.imshow("magnitude", np.uint8(magnitude))
+    cv2.imshow("magnitude", histogram_equalizer(np.uint8(magnitude)))
     cv2.waitKey(0)
     cv2.destroyWindow("magnitude")
 
@@ -143,7 +174,7 @@ def non_maximal_suppression(mag, dir):  # for every pixel (i,j) in magnitude che
                        sup[i][j] = 0
 
 
-    cv2.imshow("suppressed", np.uint8(sup))
+    cv2.imshow("suppressed", histogram_equalizer(np.uint8(sup)))
     cv2.waitKey(0)
     cv2.destroyWindow("suppressed")
     return sup
@@ -208,31 +239,39 @@ def edge_linking(suppressed_image):
 
 
 def chamfer(edge_image):  # distance of every pixel from edge
-    edge = np.uint8(edge_image.copy())
+    edge = np.uint8(edge_image.copy())  # Ensure the image is in uint8 format
     height, width = edge.shape
-    chamfer_distance = np.zeros(shape=(height, width), dtype=np.uint8)
-    for i in range(height):  # pass 1
+    chamfer_distance = np.full((height, width), float('inf'))  # Initialize chamfer distance with infinity
+
+    # First pass: top-left to bottom-right
+    for i in range(height):  
         for j in range(width):
-            if edge[i][j] > 0:  # if ON pixel
+            if edge[i][j] > 0:  # if it's an edge pixel (ON pixel)
                 chamfer_distance[i][j] = 0
             else:
-                chamfer_distance[i][j] = min(float('inf'), 1+chamfer_distance[i-1][j], 1+chamfer_distance[i][j-1])
+                # Compare with the pixel above and the pixel to the left
+                if i > 0:  # Check the pixel above
+                    chamfer_distance[i][j] = min(chamfer_distance[i][j], 1 + chamfer_distance[i - 1][j])
+                if j > 0:  # Check the pixel to the left
+                    chamfer_distance[i][j] = min(chamfer_distance[i][j], 1 + chamfer_distance[i][j - 1])
 
-
-    for i in range(height-1,-1,-1): # pass 2
-        for j in range(width-1,-1,-1):
-            if edge[i][j] > 0:  # if ON pixel
+    # Second pass: bottom-right to top-left
+    for i in range(height - 1, -1, -1):  # Start from the bottom
+        for j in range(width - 1, -1, -1):  # Start from the right
+            if edge[i][j] > 0:  # if it's an edge pixel (ON pixel)
                 chamfer_distance[i][j] = 0
             else:
-                if i < height - 1:  # Check the bottom pixel
+                # Compare with the pixel below and the pixel to the right
+                if i < height - 1:  # Check the pixel below
                     chamfer_distance[i][j] = min(chamfer_distance[i][j], 1 + chamfer_distance[i + 1][j])
-                if j < width - 1:  # Check the right pixel
+                if j < width - 1:  # Check the pixel to the right
                     chamfer_distance[i][j] = min(chamfer_distance[i][j], 1 + chamfer_distance[i][j + 1])
 
-    cv2.imshow("Chamfer_distance", chamfer_distance)
+    # Return the Chamfer distance image
+    cv2.imshow("Final_Edges", histogram_equalizer(np.uint8(chamfer_distance)))
     cv2.waitKey(0)
-    cv2.destroyWindow("Chamfer_distance")
-    return chamfer_distance
+    cv2.destroyWindow("Final_Edges")
+    return chamfer_distance.astype(np.uint8)
 
 
 def canny_edge(filename, sigma):  # canny edge detector
@@ -242,28 +281,49 @@ def canny_edge(filename, sigma):  # canny edge detector
     return edge_image
 
 
-def ssd(image, kernel):  # Sum of Square Distance for template matching. Where pixel intensity if minimum that is location of template in an image
-
+def ssd(image, kernel, actual_image):  # Sum of Square Distance for template matching. Where pixel intensity if minimum that is location of template in an image
+    template = kernel
+    template_height, template_width = template.shape
     height, width = image.shape
-    ker_h, ker_w = kernel.shape
+    h = np.zeros(shape=(height, width), dtype=np.double)
+    # Initialize a list to store SSD values for each location
+    ssd_values = []
 
-    h = np.zeros(shape=(height, width), dtype=np.uint64)  # output image
-    for i in range(height):
-        for j in range(width):
-            sum = 0
-            for k in range(ker_h):
-                for m in range(ker_w):
-                    offset_i = -1 * math.floor(ker_h // 2) + k
-                    offset_j = -1 * math.floor(ker_w / 2) + m
-                    if (0 <= i + offset_i < image.shape[0]) and (0 <= j + offset_j < image.shape[1]):
-                        sum += ((image[i + offset_i][j + offset_j] - kernel[k][m]) ** 2)
-            h[i][j] = sum
+    # Loop over every possible position of the template in the image
+    for y in range(image.shape[0] - template_height):
+        for x in range(image.shape[1] - template_width):
+            # Extract the subregion from the image where the template is being compared
+            subregion = image[y:y + template_height, x:x + template_width]
+            
+            # Calculate the SSD (sum of squared differences) between the template and the subregion
+            ssd = np.sum((subregion - template) ** 2)
+            
+            # Append the SSD value for this position
+            ssd_values.append((x, y, ssd))
+            h[y][x] = ssd
 
-    cv2.imshow("ssd_map", np.uint8(h))
+    # Find the position with the minimum SSD value (best match)
+    best_match = min(ssd_values, key=lambda x: x[2])
+
+    # Extract the coordinates of the best match
+    best_x, best_y, min_ssd = best_match
+
+    # Draw a rectangle around the best match (for visualization)
+    top_left = (best_x-20, best_y+15)
+    bottom_right = (best_x + template_width, best_y + template_height)
+    cv2.rectangle(actual_image, top_left, bottom_right, (255, 0, 0), 2)
+
+    cv2.imshow("ssd", np.uint8(h))
     cv2.waitKey(0)
-    cv2.destroyWindow("ssd_map")
-    return h
+    cv2.destroyWindow("ssd")
 
+    # Display the result
+    plt.imshow(actual_image, cmap='gray')
+    plt.title(f"Best Match at ({best_x}, {best_y}) with SSD: {min_ssd}")
+    plt.show()
+
+    print(f"Best match found at ({best_x}, {best_y}) with SSD: {min_ssd}")
+    return actual_image
 
 # kernel = np.full((3, 5), 1/15)
 # kernel = np.array([[0, -1, 0], [-1, 5, -1],[0, -1, 0]])
