@@ -591,33 +591,6 @@ def canny_edge(filename, sigma):  # canny edge detector
     return edge_image
 
 
-def ssd(image, kernel):  # Sum of Square Distance for template matching. Where pixel intensity if minimum that is location of template in an image
-
-    height, width = image.shape
-    ker_h, ker_w = kernel.shape
-
-    h = np.zeros(shape=(height, width), dtype=np.uint64)  # output image
-    for i in range(height):
-        for j in range(width):
-            sum = 0
-            for k in range(ker_h):
-                for m in range(ker_w):
-                    offset_i = -1 * math.floor(ker_h // 2) + k
-                    offset_j = -1 * math.floor(ker_w / 2) + m
-                    if (0 <= i + offset_i < image.shape[0]) and (0 <= j + offset_j < image.shape[1]):
-                        sum += ((image[i + offset_i][j + offset_j] - kernel[k][m]) ** 2)
-            h[i][j] = sum
-
-    cv2.imshow("ssd_map", np.uint8(h))
-    cv2.waitKey(0)
-    cv2.destroyWindow("ssd_map")
-    return h
-
-
-# kernel = np.full((3, 5), 1/15)
-# kernel = np.array([[0, -1, 0], [-1, 5, -1],[0, -1, 0]])
-
-
 def watershed(mag):
     height, width = mag.shape
     label = np.full(shape=(height, width),fill_value=-1, dtype=np.double)  # labeled output
